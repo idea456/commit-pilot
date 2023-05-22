@@ -13,16 +13,20 @@ const git = simpleGit();
 const execute = util.promisify(exec);
 
 async function getLatestDiff() {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve, reject) => {
         let raw_diff;
-        const { stdout, err } = exec("git diff --staged");
-        if (!err) {
+        const { stdout, stderr } = execute("git diff --staged");
+        if (stdout && !stderr) {
             stdout.on("data", (chunk) => {
                 raw_diff += chunk.toString();
             });
             stdout.on("end", () => {
                 resolve(raw_diff);
             });
+        } else if (!stdout && !stderr) {
+            resolve("");
+        } else {
+            reject(stderr);
         }
     });
 }
@@ -83,6 +87,10 @@ async function main() {
     });
 
     let diff = await getLatestDiff();
+    if (diff.length === 0) {
+        console.log(chalk.red.bold("No staged files present."));
+        return;
+    }
     let should_regenerate = true;
     const has_exceeded_length = hasExceededMessageLength(diff);
 
@@ -153,7 +161,7 @@ async function main() {
                     await git.commit(msg);
                     spinner.stop();
                 } catch (err) {
-                    console.log(Object.keys(err));
+                    console.log(err);
                 }
             }
             should_regenerate = false;
