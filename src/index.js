@@ -178,13 +178,8 @@ async function main() {
     }
 }
 
-function computeFibbonaci() {
-    console.log("resasdasdasd");
-}
-
 (async function () {
     // remove NodeJS warnings temporarily
-    computeFibbonaci();
     process.removeAllListeners("warning");
     await main();
 })();
