@@ -5,20 +5,26 @@ import prompts from "prompts";
 import chalk from "chalk";
 import fs from "fs";
 import dotenv from "dotenv";
+import { exec } from "child_process";
+import util from "node:util";
 
 const MAX_MESSAGE_LENGTH = 2048;
 const git = simpleGit();
+const execute = util.promisify(exec);
 
 async function getLatestDiff() {
-    let raw_diff;
-    await git.diff([`@~~..@~`], (err, diff) => {
-        if (err) {
-            console.error(err);
-            return;
+    return new Promise((resolve) => {
+        let raw_diff;
+        const { stdout, err } = exec("git diff --staged");
+        if (!err) {
+            stdout.on("data", (chunk) => {
+                raw_diff += chunk.toString();
+            });
+            stdout.on("end", () => {
+                resolve(raw_diff);
+            });
         }
-        raw_diff = diff;
     });
-    return JSON.stringify(raw_diff);
 }
 
 function loadEnvFile() {
