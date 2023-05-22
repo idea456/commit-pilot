@@ -6,6 +6,7 @@ import chalk from "chalk";
 import fs from "fs";
 import dotenv from "dotenv";
 
+const MAX_MESSAGE_LENGTH = 2048;
 const git = simpleGit();
 
 async function getLatestDiff() {
@@ -44,6 +45,14 @@ function setEnv(name, value) {
     fs.writeFileSync(".env", lines.join("\n"));
 }
 
+function hasExceededMessageLength(message) {
+    const tokens = message.split(" ");
+    if (tokens.length >= MAX_MESSAGE_LENGTH) {
+        return true;
+    }
+    return false;
+}
+
 async function main() {
     loadEnvFile();
     let token = process.env.OPENAI_ACCESS_TOKEN;
@@ -67,14 +76,40 @@ async function main() {
         apiReverseProxyUrl: "https://ai.fakeopen.com/api/conversation",
     });
 
-    const diff = await getLatestDiff();
+    let diff = await getLatestDiff();
     let should_regenerate = true;
+    const has_exceeded_length = hasExceededMessageLength(diff);
+
+    if (has_exceeded_length) diff = new Buffer(diff).toString("base64");
 
     while (should_regenerate) {
         const spinner = ora("Generating commit message...").start();
-        const res = await api.sendMessage(
-            `Provide a one line commit message with all lowercase letters, with the format '(feat|fix|chore): (commit message)', labelling this commit as either feat, fix or chore, using this diff as a reference:\n${diff}`,
-        );
+        let res = "";
+        if (has_exceeded_length) {
+            try {
+                res = await api.sendMessage(
+                    `Provide a one line commit message with all lowercase letters, based on this encoded base64 diff as a reference:\n${diff}`,
+                );
+            } catch (err) {
+                if (
+                    err?.statusCode === 413 &&
+                    err?.statusText === "Payload Too Large"
+                ) {
+                    spinner.stop();
+                    console.log(
+                        chalk.red.bold(
+                            "Unable to generate commit message, changes are too large.",
+                        ),
+                    );
+                    return;
+                }
+                console.log(err);
+            }
+        } else {
+            res = await api.sendMessage(
+                `Provide a one line commit message with all lowercase letters, based on this diff as a reference:\n${diff}`,
+            );
+        }
         spinner.stop();
 
         const { respond } = await prompts({
@@ -103,14 +138,19 @@ async function main() {
         }
 
         if (respond !== "r") {
-            try {
-                spinner.start("Commiting with message...");
-                await git.commit(msg);
-                should_regenerate = false;
-                spinner.stop();
-            } catch (err) {
-                console.log(err);
+            const should_skip_commit = process.argv.find(
+                (arg) => arg === "--skip-commit",
+            );
+            if (!should_skip_commit) {
+                try {
+                    spinner.start("Commiting with message...");
+                    await git.commit(msg);
+                    spinner.stop();
+                } catch (err) {
+                    console.log(Object.keys(err));
+                }
             }
+            should_regenerate = false;
         }
     }
 }
