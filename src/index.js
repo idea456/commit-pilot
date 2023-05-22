@@ -179,5 +179,7 @@ async function main() {
 }
 
 (async function () {
+    // remove NodeJS warnings temporarily
+    process.removeAllListeners("warning");
     await main();
 })();
