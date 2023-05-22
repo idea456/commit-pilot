@@ -7,10 +7,13 @@
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1",
         "dev": "nodemon",
-        "build": "etsc",
+        "build": "ncc build src/index.js -o dist/index.js",
         "start": "node dist/index.js",
         "bundle": "etsc"
     },
+    "files": [
+        "src"
+    ],
     "author": "",
     "license": "ISC",
     "dependencies": {
@@ -24,6 +27,7 @@
     },
     "devDependencies": {
         "etsc": "^0.1.0",
+        "ncc": "^0.3.6",
         "nodemon": "^2.0.22"
     }
 }
