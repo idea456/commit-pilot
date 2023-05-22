@@ -12,23 +12,44 @@ const MAX_MESSAGE_LENGTH = 2048;
 const git = simpleGit();
 const execute = util.promisify(exec);
 
-async function getLatestDiff() {
-    return new Promise(async (resolve, reject) => {
-        let raw_diff;
-        const { stdout, stderr } = execute("git diff --staged");
-        if (stdout && !stderr) {
-            stdout.on("data", (chunk) => {
-                raw_diff += chunk.toString();
-            });
-            stdout.on("end", () => {
-                resolve(raw_diff);
-            });
-        } else if (!stdout && !stderr) {
-            resolve("");
-        } else {
-            reject(stderr);
-        }
+async function authenticateApi(regenerate = false) {
+    loadEnvFile();
+    let token = process.env.OPENAI_ACCESS_TOKEN;
+    if (!token || regenerate) {
+        console.log("You are currently not authenticated.");
+        const { accessToken } = await prompts([
+            {
+                type: "password",
+                name: "accessToken",
+                message: `Please visit this link ${chalk.bold(
+                    "https://chat.openai.com/api/auth/session",
+                )} and paste the accessToken here: `,
+            },
+        ]);
+        token = accessToken;
+        setEnv("OPENAI_ACCESS_TOKEN", accessToken);
+    }
+
+    const api = new ChatGPTUnofficialProxyAPI({
+        accessToken: token, // visit https://chat.openai.com/api/auth/session to get access token
+        apiReverseProxyUrl: "https://ai.fakeopen.com/api/conversation",
     });
+    return api;
+}
+
+async function sendMessage(message) {
+    return await api.sendMessage(message);
+}
+
+async function getLatestDiff() {
+    const { stdout, stderr } = await execute("git diff --staged");
+    if (stdout && !stderr) {
+        return stdout;
+    } else if (!stdout && !stderr) {
+        return "";
+    } else {
+        throw new Error(stderr);
+    }
 }
 
 function loadEnvFile() {
@@ -64,65 +85,58 @@ function hasExceededMessageLength(message) {
 }
 
 async function main() {
-    loadEnvFile();
-    let token = process.env.OPENAI_ACCESS_TOKEN;
-    if (!token) {
-        console.log("You are currently not authenticated.");
-        const { accessToken } = await prompts([
-            {
-                type: "password",
-                name: "accessToken",
-                message: `Please visit this link ${chalk.bold(
-                    "https://chat.openai.com/api/auth/session",
-                )} and paste the accessToken here: `,
-            },
-        ]);
-        token = accessToken;
-        setEnv("OPENAI_ACCESS_TOKEN", accessToken);
-    }
-
-    const api = new ChatGPTUnofficialProxyAPI({
-        accessToken: token, // visit https://chat.openai.com/api/auth/session to get access token
-        apiReverseProxyUrl: "https://ai.fakeopen.com/api/conversation",
-    });
-
+    let api = await authenticateApi();
     let diff = await getLatestDiff();
     if (diff.length === 0) {
         console.log(chalk.red.bold("No staged files present."));
         return;
     }
     let should_regenerate = true;
+    let should_reauthenticate = false;
     const has_exceeded_length = hasExceededMessageLength(diff);
 
     if (has_exceeded_length) diff = new Buffer(diff).toString("base64");
 
-    while (should_regenerate) {
+    while (should_regenerate || should_reauthenticate) {
+        if (should_reauthenticate) {
+            api = await authenticateApi(true);
+            should_reauthenticate = false;
+        }
         const spinner = ora("Generating commit message...").start();
         let res = "";
-        if (has_exceeded_length) {
-            try {
+        try {
+            if (has_exceeded_length) {
                 res = await api.sendMessage(
                     `Provide a one line commit message with all lowercase letters, based on this encoded base64 diff as a reference:\n${diff}`,
                 );
-            } catch (err) {
-                if (
-                    err?.statusCode === 413 &&
-                    err?.statusText === "Payload Too Large"
-                ) {
-                    spinner.stop();
-                    console.log(
-                        chalk.red.bold(
-                            "Unable to generate commit message, changes are too large.",
-                        ),
-                    );
-                    return;
-                }
-                console.log(err);
+            } else {
+                res = await api.sendMessage(
+                    `Provide a one line commit message with all lowercase letters, based on this diff as a reference:\n${diff}`,
+                );
             }
-        } else {
-            res = await api.sendMessage(
-                `Provide a one line commit message with all lowercase letters, based on this diff as a reference:\n${diff}`,
-            );
+        } catch (err) {
+            spinner.stop();
+            if (
+                err?.statusCode === 413 &&
+                err?.statusText === "Payload Too Large"
+            ) {
+                console.log(
+                    chalk.red.bold(
+                        "Unable to generate commit message, changes are too large.",
+                    ),
+                );
+                return;
+            } else if (err?.statusCode === 401) {
+                console.log(
+                    chalk.red.bold(
+                        "Access token has expired. Reauthenticating...",
+                    ),
+                );
+                process.env.OPENAI_ACCESS_TOKEN = undefined;
+                should_reauthenticate = true;
+                continue;
+            }
+            console.log(err);
         }
         spinner.stop();
 
@@ -157,9 +171,7 @@ async function main() {
             );
             if (!should_skip_commit) {
                 try {
-                    spinner.start("Commiting with message...");
                     await git.commit(msg);
-                    spinner.stop();
                 } catch (err) {
                     console.log(err);
                 }
