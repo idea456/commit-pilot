@@ -68,6 +68,7 @@ function setEnv(name, value) {
         if (line.startsWith(`${name}=`)) index = i;
     });
 
+    console.log(i, lines);
     if (i !== -1) {
         lines[i] = `${name}=${value}`;
     } else {
