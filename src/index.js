@@ -12,6 +12,8 @@ const MAX_MESSAGE_LENGTH = 2048 * 2;
 const git = simpleGit();
 const execute = util.promisify(exec);
 
+const logError = (msg) => console.log(chalk.red.bold(msg));
+
 async function authenticateApi(regenerate = false) {
     loadEnvFile();
     let token = process.env.OPENAI_ACCESS_TOKEN;
@@ -62,13 +64,8 @@ function loadEnvFile() {
 function setEnv(name, value) {
     const envFile = fs.readFileSync(".env", "utf8");
     const lines = envFile.split("\n");
+    let i = lines.findIndex((line) => line.includes(name));
 
-    let i = -1;
-    lines.forEach((line, index) => {
-        if (line.startsWith(`${name}=`)) index = i;
-    });
-
-    console.log(i, lines);
     if (i !== -1) {
         lines[i] = `${name}=${value}`;
     } else {
@@ -89,7 +86,7 @@ async function main() {
     let api = await authenticateApi();
     let diff = await getLatestDiff();
     if (diff.length === 0) {
-        console.log(chalk.red.bold("No staged files present."));
+        logError("No staged files present.");
         return;
     }
     let should_regenerate = true;
@@ -111,10 +108,8 @@ async function main() {
                 //     `Perform the following steps:\n1. Decode this base64 string: ${diff}\n2. Reply to this message with a one line commit message with all lowercase letters, based on that diff as a reference.`,
                 // );
                 spinner.stop();
-                console.log(
-                    chalk.red.bold(
-                        "Unable to generate commit message, changes are too large.",
-                    ),
+                logError(
+                    "Unable to generate commit message, changes are too large.",
                 );
                 return;
             } else {
@@ -128,18 +123,12 @@ async function main() {
                 err?.statusCode === 413 &&
                 err?.statusText === "Payload Too Large"
             ) {
-                console.log(
-                    chalk.red.bold(
-                        "Unable to generate commit message, changes are too large.",
-                    ),
+                logError(
+                    "Unable to generate commit message, changes are too large.",
                 );
                 return;
             } else if (err?.statusCode === 401) {
-                console.log(
-                    chalk.red.bold(
-                        "Access token has expired. Reauthenticating...",
-                    ),
-                );
+                logError("Access token has expired. Reauthenticating...");
                 process.env.OPENAI_ACCESS_TOKEN = undefined;
                 should_reauthenticate = true;
                 continue;
