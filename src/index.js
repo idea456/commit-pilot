@@ -8,7 +8,7 @@ import dotenv from "dotenv";
 import { exec } from "child_process";
 import util from "node:util";
 
-const MAX_MESSAGE_LENGTH = 2048;
+const MAX_MESSAGE_LENGTH = 2048 * 2;
 const git = simpleGit();
 const execute = util.promisify(exec);
 
@@ -106,9 +106,16 @@ async function main() {
         let res = "";
         try {
             if (has_exceeded_length) {
-                res = await api.sendMessage(
-                    `Provide a one line commit message with all lowercase letters, based on this encoded base64 diff as a reference:\n${diff}`,
+                // res = await api.sendMessage(
+                //     `Perform the following steps:\n1. Decode this base64 string: ${diff}\n2. Reply to this message with a one line commit message with all lowercase letters, based on that diff as a reference.`,
+                // );
+                spinner.stop();
+                console.log(
+                    chalk.red.bold(
+                        "Unable to generate commit message, changes are too large.",
+                    ),
                 );
+                return;
             } else {
                 res = await api.sendMessage(
                     `Provide a one line commit message with all lowercase letters, based on this diff as a reference:\n${diff}`,
