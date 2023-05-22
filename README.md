@@ -1,4 +1,4 @@
-# commit-pilot
+# 🤖💬 commit-pilot
 
 This package uses ChatGPT to generate commit messages based on your changes. It provides a convenient way to generate commit messages for your development workflow, if you are too lazy to think of a good commit message to put in.
 
