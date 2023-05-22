@@ -1,4 +1,5 @@
 *.env
 *.secret
 *.secrets
+*.tgz
 node_modules
