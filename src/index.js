@@ -12,7 +12,7 @@ const MAX_MESSAGE_LENGTH = 2048 * 2;
 const git = simpleGit();
 const execute = util.promisify(exec);
 
-const logError = (msg) => console.log(chalk.red.bold(msg));
+const logError = (msg) => console.log(chalk.red(msg));
 
 async function authenticateApi(regenerate = false) {
     loadEnvFile();
@@ -39,8 +39,17 @@ async function authenticateApi(regenerate = false) {
     return api;
 }
 
-async function sendMessage(message) {
-    return await api.sendMessage(message);
+async function commitMessage(message) {
+    const should_skip_commit = process.argv.find(
+        (arg) => arg === "--skip-commit",
+    );
+    if (!should_skip_commit) {
+        try {
+            await git.commit(message);
+        } catch (err) {
+            console.log(err);
+        }
+    }
 }
 
 async function getLatestDiff() {
@@ -111,6 +120,12 @@ async function main() {
                 logError(
                     "Unable to generate commit message, changes are too large.",
                 );
+                const { commit_message } = await prompts({
+                    type: "text",
+                    name: "commit_message",
+                    message: "Enter your commit message: ",
+                });
+                await commitMessage(commit_message);
                 return;
             } else {
                 res = await api.sendMessage(
@@ -163,16 +178,7 @@ async function main() {
         }
 
         if (respond !== "r") {
-            const should_skip_commit = process.argv.find(
-                (arg) => arg === "--skip-commit",
-            );
-            if (!should_skip_commit) {
-                try {
-                    await git.commit(msg);
-                } catch (err) {
-                    console.log(err);
-                }
-            }
+            await commitMessage(msg);
             should_regenerate = false;
         }
     }
