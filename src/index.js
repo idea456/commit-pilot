@@ -13,6 +13,7 @@ const git = simpleGit();
 const execute = util.promisify(exec);
 
 const logError = (msg) => console.log(chalk.red(msg));
+const logWarning = (msg) => console.log(chalk.yellow(msg));
 
 async function authenticateApi(regenerate = false) {
     loadEnvFile();
