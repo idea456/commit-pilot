@@ -12,8 +12,10 @@
         "bundle": "etsc"
     },
     "files": [
-        "src"
+        "src",
+        "bin"
     ],
+    "bin": "./bin/commit-pilot.js",
     "author": "",
     "license": "ISC",
     "dependencies": {
